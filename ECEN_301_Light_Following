@@ -1,0 +1,414 @@
+#include "NewPing.h"
+#include <Servo.h>
+
+#define SERVO_PIN 10
+
+#define LIGHT_LEFT A4//orange
+#define LIGHT_RIGHT A6//yellow
+#define LIGHT_ABOVE A5 //brown
+#define LIGHT_BELOW A7//green
+#define SPEED_BUTTON A1
+
+#define TRIGGER_PIN 6
+#define ECHO_PIN 5
+#define MAX_DISTANCE 400
+
+#define LEFT_MOTOR 7 //yellow
+#define RIGHT_MOTOR 4 //white
+#define RIGHT_MOTOR_PMW 11//gray
+#define LEFT_MOTOR_PMW 3//orange
+
+#define LEFT_MOTOR_POWER 197 //yellow
+#define RIGHT_MOTOR_POWER 254 //white
+
+#define STOPPED 12
+
+Servo myServo;
+
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
+
+void setup()
+{
+  // initialize digital pins as outputs.
+  Serial.begin(9600);
+  myServo.attach(SERVO_PIN);
+  pinMode(RIGHT_MOTOR, OUTPUT);
+  pinMode(LEFT_MOTOR_PMW, OUTPUT);
+  pinMode(RIGHT_MOTOR_PMW, OUTPUT);
+  pinMode(LEFT_MOTOR, OUTPUT);
+
+  pinMode (STOPPED, OUTPUT);
+
+    myServo.write(105);
+}
+
+// the loop function runs over and over again forever
+void loop()
+{
+  //Serial.println(analogRead(RIGHT_MOTOR));
+float percentPower = MotorSpeed(CountButtonPresses(SPEED_BUTTON));
+//  DriveForward(percentPower);
+
+  DriveStateMachine(DeterminDriveState(),percentPower);
+  ServoStateMachine(DetermineServoState());
+
+  Serial.println(myServo.read());
+}
+
+
+/***********************************************************
+ * Button Logic
+ ***********************************************************/
+int IsButtonPressed(int buttonPin)
+{
+  float buttonVoltage = GetPinVoltage(buttonPin);
+//  Serial.print (buttonPin);
+//  Serial.print(" ");
+  
+  if(buttonVoltage >= 4.99)
+{
+//    Serial.println("true");
+    return true;
+  }
+  else
+{
+//    Serial.println("false");
+    return false;
+  }  
+}
+///////////
+//
+float GetPinVoltage(int pin)
+{
+  return 5 * (float)analogRead(pin)/ 1023; 
+}
+//
+////////////
+int CountButtonPresses(int buttonPin)// test to make sure static from pressing button does not affect results
+{
+//  Serial.println(IsButtonPressed(buttonPin));
+  static int state = 0;
+  static int buttonCount = 0;
+  switch(state)
+ {
+    case 0:
+    {
+       if (IsButtonPressed(buttonPin) == 1)
+       {
+//          Serial.println("button pressed");
+          state = 1;
+       }
+       break;
+    }
+    case 1:
+    {
+       if (IsButtonPressed(buttonPin) == 0)
+       {
+//          Serial.println("button released");
+          state = 2;
+       }
+       break;
+    }
+    case 2:
+    {
+//      Serial.println("button pressed");
+      buttonCount = buttonCount + 1;
+      state = 0;
+      break;
+    }
+ }
+//  Serial.print("state ");
+//  Serial.println(IsButtonPressed(buttonPin));
+//  Serial.print("buttonCount ");
+//  Serial.println(buttonCount);
+//  Serial.print("Speed Setting ");
+//  Serial.println(buttonCount % 4);
+  return buttonCount % 4;
+}
+//
+
+/***********************************************************
+ * Light Commands
+ ***********************************************************/
+void TurnOnLed(int ledPin)
+{
+  digitalWrite(ledPin, HIGH);
+}
+//
+void TurnOffLed(int ledPin){
+  digitalWrite(ledPin, LOW);
+}
+
+/***********************************************************
+   Motor Commands
+ ***********************************************************/
+
+void MotorOn(int motorPWM, int power)
+{
+  //this turns on a motor and controls the speed
+  //  Serial.println();
+  analogWrite(motorPWM, power);
+}
+
+void MotorOff(int motorPin)
+{
+  //this will turn off motor
+  digitalWrite(motorPin, LOW);
+}
+
+
+/***********************************************************
+   Drive Commands
+ ***********************************************************/
+void DriveForward(float powerPercent)
+{
+  Serial.println("Drive Forward");
+  TurnOffLed(STOPPED);
+  //turn on left motor
+  MotorOn(LEFT_MOTOR_PMW, powerPercent * RIGHT_MOTOR_POWER);
+  //turn on right motor
+  MotorOn(RIGHT_MOTOR_PMW, powerPercent * LEFT_MOTOR_POWER);
+}
+
+void TurnLeft(float powerPercent)
+{
+  Serial.println("Turn Left");
+  //  TurnOffLed(STOPPED);
+  // turn off left motor
+  MotorOff(LEFT_MOTOR_PMW);
+  //turn on right motor
+  MotorOn(RIGHT_MOTOR_PMW, powerPercent * RIGHT_MOTOR_POWER);
+}
+
+void TurnRight(float powerPercent) {
+  Serial.println("Turn Right");
+  //  TurnOffMotor(STOPPED);
+  //turn on left motor
+  MotorOn(LEFT_MOTOR_PMW, powerPercent * LEFT_MOTOR_POWER);
+  //turn off right motor
+  MotorOff(RIGHT_MOTOR_PMW);
+}
+
+void DriveStop()
+{
+  Serial.println("Drive Stop");
+  //turn off left motor
+  MotorOff(LEFT_MOTOR_PMW);
+  //turn off right motor
+  MotorOff(RIGHT_MOTOR_PMW);
+  TurnOnLed(STOPPED);
+}
+
+
+float MotorSpeed(int state)
+{
+  switch (state)
+  {
+    case 0:
+      {
+        return 0.0;
+        break;
+      }
+
+    case 1:
+      {
+        return 0.25;
+        break;
+      }
+
+    case 2:
+      return 0.5;
+      break;
+
+    case 3:
+      {
+        return 1.0;
+        break;
+      }
+  }
+
+}
+
+/***********************************************************
+   Servos
+ ***********************************************************/
+
+void ServoUp()
+{
+  int currentAngle = myServo.read();
+  if (currentAngle > 60) {
+    currentAngle--;
+//    Serial.println("down");
+    myServo.write(currentAngle);
+  }
+}
+
+
+void ServoDown()
+{
+  int currentAngle = myServo.read();
+  if (currentAngle < 150) {
+    currentAngle++;
+    myServo.write(currentAngle);
+  }
+}
+
+/***********************************************************
+ * Ultrasonic Sensor
+ ***********************************************************/
+int IsObjectClose()
+{
+  float distance = sonar.ping_cm();
+//  Serial.print("Distance = ");
+  
+  
+  if (distance >= 10 || distance <= 2) 
+  {
+//    Serial.println("Out of range");
+    return false;
+  }
+  else 
+  {
+//    Serial.print(distance);
+   // Serial.println(distance);
+//    Serial.println(" cm");
+    return true;
+  }
+  delay(500);
+}
+
+
+/***********************************************************
+ * photodiodes 
+ ***********************************************************/
+bool IsPhotodiodeOn(int pin){
+  float pinReading = GetPinVoltage(pin);
+  if(pinReading > 1.0)
+  {
+    return true;
+  }
+  else
+  {
+  return false;
+  }
+}
+
+/***********************************************************
+   Drive State Machine
+ ***********************************************************/
+void DriveStateMachine(int driveState, float percentPower)
+{
+  switch (driveState)
+  {
+    case 0:
+
+      DriveForward(percentPower);
+      break;
+    case 1:
+
+      TurnLeft(percentPower);
+      break;
+
+    case 2:
+
+      TurnRight(percentPower);
+      break;
+
+    case 3:
+
+      DriveStop();
+      break;
+
+    default:
+
+      DriveForward(percentPower);
+      break;
+  }
+
+
+}
+/***********************************************************
+   transition Logic for Drive State Machine
+ ***********************************************************/
+int DeterminDriveState()
+{
+  int driveState;
+  //  Serial.println("Drive State:");
+  if (IsObjectClose() == true)
+  {
+    driveState = 3;
+    //    Serial.println("COLLISION_SENSOR");
+  }
+  else if (IsPhotodiodeOn(LIGHT_RIGHT) == true)
+  {
+    driveState = 1;
+    //    Serial.println("LIGHT_RIGHT");
+  }
+  else if (IsPhotodiodeOn(LIGHT_LEFT) == true)
+  {
+    driveState = 2;
+    //    Serial.println("LIGHT_LEFT");
+  }
+  else
+  {
+    driveState = 0;
+    //    Serial.println("None");
+  }
+  //  Serial.println(driveState);
+  return driveState;
+}
+
+
+/***********************************************************
+   Servo State Machine
+ ***********************************************************/
+void ServoStateMachine(int servoState)
+{
+  static int angle = 105;
+  switch (servoState) {
+    case 0:
+            Serial.println("Servo Stop");
+      break;
+    case 1:
+            Serial.println("Tilt Up");
+      ServoUp();
+      break;
+
+    case 2:
+            Serial.println("Tilt Down");
+      ServoDown();
+      break;
+
+    default:
+            Serial.println("Servo Stop");
+      break;
+  }
+}
+
+/***********************************************************
+   transiton Logic Servo State Machine
+ ***********************************************************/
+int DetermineServoState()
+{
+  int servoState;
+  //  Serial.print("Servo State: ");
+
+  if (IsPhotodiodeOn(LIGHT_ABOVE) == true)
+  {
+    servoState = 2;
+//        Serial.println("LIGHT_ABOVE");
+  }
+  else if (IsPhotodiodeOn(LIGHT_BELOW) == true)
+  {
+    servoState = 1;
+    //    Serial.println("LIGHT_BELOW");
+  }
+  else
+  {
+    servoState = 0;
+  }
+
+
+  //  Serial.println(servoState);
+  return servoState;
+}
